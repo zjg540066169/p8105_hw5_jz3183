@@ -69,7 +69,9 @@ In the next code chunk, I write a function to fill the missing value and display
 ```{r p1_functions, collapse = TRUE}
 # in this code chunk, we write a function "fill_missing" and use "map_df" to fill the missing data. 
 fill_missing = function(vec) {
-  
+  if (!is.vector(vec)) {
+    stop("The input is not a vector")
+  }
   if (is.numeric(vec)) {
     vec = 
       vec %>% 
@@ -137,15 +139,18 @@ df_p2
 
 After tidy the data, we will make a spaghetti plot showing observations on each subject over time:
 
-```{r p2_spaghetti, echo = FALSE}
+```{r p2_spaghetti}
+# in this code chunk, we will make a spaghetti plot
+
 df_p2 %>% 
+  # transform the data to make plot
   pivot_longer(
     cols = week_1:week_8,
     names_to = "week",
     names_prefix = "week_",
     values_to = "value"
   ) %>% 
-  #filter(arm == "control") %>% 
+  # draw spaghetti plot
   ggplot(aes(x = week, y = value, color = subject_id)) +
   geom_line(aes(x = week, y = value, group = subject_id)) +
   facet_grid(.~arm) +
@@ -158,3 +163,128 @@ df_p2 %>%
 ```
 
 From the spaghetti graph, we may draw the conclusion that the values of control arm are nearly kept during 8 weeks. However, the values of experimental arm are increased during 8 weeks. This result may show that the experiment can make a difference during the time.
+
+
+## Problem 3
+
+In the problem, we are asked to do simulation on linear regression with the following parameters:
+
+* Fix $n = 30$
+* Fix $x_{i1}$ as draws from a standard Normal distribution
+* Fix $\beta_0 = 2$
+* Fix $\sigma^2 = 50$
+
+During the simulations, we will set $\beta_{1} = 0$ firstly, and change its value from 1 to 6 to do the simulations.
+
+```{r p3_beta_0, collapse = TRUE, message = FALSE}
+# in this code chunk I run the simulation 10000 times for each beta_1
+
+# simulation function
+sim_regression = function(beta_1 = 0) {
+  # set parameters 
+  n = 30
+  beta_0 = 2
+  sigma = 50
+  
+  # set variables
+  sim_data = tibble(
+    x = rnorm(n, mean = 0, sd = 1),
+    y = beta_0 + beta_1 * x + rnorm(n, 0, sigma)
+  )
+  
+  # regression
+  ls_fit = lm(y ~ x, data = sim_data)
+  lm_result = broom::tidy(ls_fit)
+  
+  # return the results of beta1_hat
+  tibble(
+    beta1_hat = lm_result[[2, "estimate"]],
+    p_value = lm_result[[2, "p.value"]]
+  )
+}
+
+sim_results = 
+  tibble(beta_1 = 0:6) %>% 
+  mutate(beta_1_hat = map(.x = beta_1, ~rerun(10000, sim_regression(beta_1 = .x)))) %>%  #simulate
+  # unnest
+  unnest(cols = "beta_1_hat") %>%   
+  unnest(cols = "beta_1_hat")
+
+# display
+head(sim_results)
+```
+
+After simulation, we will start to draw graph to make some inference. The first is to make a plot showing the proportion of times the null was rejected (the power of the test):
+
+```{r p3_power, collapse = TRUE, message = FALSE}
+# in this code chunk, we make a plot about power
+
+sim_results %>% 
+  # calculate reject_proportion
+  mutate(reject = if_else(p_value <= 0.05, TRUE, FALSE)) %>% 
+  group_by(beta_1, reject) %>% 
+  summarise(reject_proportion = n() / 10000) %>% 
+  filter(reject == TRUE) %>% 
+  
+  # make bar plot
+  ggplot(aes(x = beta_1, y = reject_proportion, fill = beta_1)) +
+  geom_bar(stat = "identity") +
+  scale_x_continuous(
+    breaks = c(0, 1, 2, 3, 4, 5, 6)
+  ) + 
+  labs(
+    title = "Bar Plot of the Proportion of Times the Null was Rejected",
+    x = "Beta_1",
+    y = "Rejection Proportion") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+From the par plot we find with the effect size increase, the power is also increasing.
+
+Then, I will make 2 plots showing the average estimate of $\hat{\beta_1}$:
+
+```{r p3_average, collapse = TRUE, message = FALSE}
+# in this code chunk, we make a line plot of beta_1 average 
+
+sim_results %>% 
+  # calculate rejection
+  mutate(reject = if_else(p_value <= 0.05, TRUE, FALSE)) %>% 
+  
+  # calculate average on all data
+  group_by(beta_1) %>%
+  mutate(average_all_beta1_hat = mean(beta1_hat)) %>% 
+  ungroup() %>% 
+  
+  # calculate average on rejected data
+  group_by(beta_1, reject) %>% 
+  mutate(average_reject_beta1_hat = mean(beta1_hat)) %>% 
+  filter(reject) %>% 
+  ungroup() %>% 
+  
+  # data transformation
+  select(beta_1, average_reject_beta1_hat, average_all_beta1_hat) %>% 
+  distinct() %>% 
+  pivot_longer(
+    cols = c(average_reject_beta1_hat, average_all_beta1_hat),
+    names_to = "average_beta1_hat"
+  ) %>% 
+  
+  # make line plot
+  ggplot(aes(x = beta_1, y = value, color = average_beta1_hat)) +
+  geom_point(size = 5) +
+  geom_line(aes(group = average_beta1_hat)) +
+  scale_color_discrete("Samples",labels = c("All data","Rejected data")) +
+  scale_x_continuous(
+    breaks = c(0, 1, 2, 3, 4, 5, 6)
+  ) + 
+  scale_y_continuous(
+    breaks = c(0, 1, 2, 3, 4, 5, 6, 10, 15, 20)
+  ) + 
+  labs(
+    title = "Line Plot of the Average Beta1_hat for Different Samples",
+    x = "Beta_1",
+    y = "Average Beta1_hat") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+From the test we do, we find the sample average of $\hat{\beta_1}$ across tests for which the null is rejected largely unequal to the true value of $\beta_1$. On the other hand, sample average of $\hat{\beta_1}$ on all data is approximately equal to the true value of $\beta_1$. The reason is the samples of $\hat{\beta_1}$ which can across tests for which the null is rejected are more likely to be deviated from $\beta_1 = 0$. In other word, the larger $\hat{\beta_1}$ are, the greater probability that they can reject $H_0: \hat{\beta_1} = 0$ which result in a large amount of sample greater than $\beta_1$. Also, when $\beta_1 = 0$, the samples which can reject $H_0: \hat{\beta_1} = 0$ will be deviated from 0, which means they will be significantly larger or smaller than 0, shown in the plot above.
