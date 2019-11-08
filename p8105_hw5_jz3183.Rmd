@@ -232,11 +232,17 @@ sim_results %>%
   scale_x_continuous(
     breaks = c(0, 1, 2, 3, 4, 5, 6)
   ) + 
+  scale_y_continuous(
+    breaks = c(0, 0.25, 0.5, 0.75, 1),
+    labels = c("0%", "25%", "50%", "75%", "100%")
+  ) + 
   labs(
     title = "Bar Plot of the Proportion of Times the Null was Rejected",
     x = "Beta_1",
-    y = "Rejection Proportion") +
-  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+    y = "Rejection Proportion",
+    caption = "Data from Jeff"
+    ) +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 From the par plot we find with the effect size increase, the power is also increasing.
@@ -283,7 +289,8 @@ sim_results %>%
   labs(
     title = "Line Plot of the Average Beta1_hat for Different Samples",
     x = "Beta_1",
-    y = "Average Beta1_hat") +
+    y = "Average Beta1_hat",
+    caption = "Data from Jeff") +
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
